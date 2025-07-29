@@ -44,9 +44,8 @@
   },
   "jest": {
     "transformIgnorePatterns": [
-      "/node_modules/(?!@adobe/css-tools).+\\.js$"
+      "/node_modules/(?!@adobe/css-tools/).+\\.(js|jsx|mjs|cjs|ts|tsx)$"
+      
     ]
   }
 }
-
- 
