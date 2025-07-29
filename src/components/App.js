@@ -1,148 +1,122 @@
+// src/components/App.js
 import React, { useState, useEffect } from "react";
-import AdminNavBar from "./AdminNavBar"; // Assuming this component exists
-import QuestionForm from "./QuestionForm"; // Assuming this component exists
-import QuestionList from "./QuestionList"; // Assuming this component exists
+import QuestionList from "./QuestionList";
+import QuestionForm from "./QuestionForm"; // Correct import
 
 function App() {
-  // State to control which view is shown: "List" for questions list, "Form" for new question form
-  const [page, setPage] = useState("List");
-  // State to store the list of questions fetched from the API
   const [questions, setQuestions] = useState([]);
-  // State for loading status (optional but good practice for UX)
   const [loading, setLoading] = useState(true);
-  // State for error handling during API calls (optional but good practice)
-  const [error, setError] = useState(null);
+  const [showQuestions, setShowQuestions] = useState(false);
 
-  // useEffect hook to fetch questions from the API when the component mounts
   useEffect(() => {
-    setLoading(true); // Set loading to true before fetching
+    let isMounted = true;
+
     fetch("http://localhost:4000/questions")
-      .then((response) => {
-        // Check if the response was successful (status code 200-299)
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json(); // Parse the JSON response
-      })
+      .then((r) => r.json())
       .then((data) => {
-        setQuestions(data); // Update the questions state with fetched data
-        setLoading(false); // Set loading to false after data is fetched
-      })
-      .catch((err) => {
-        setError(err); // Set error state if fetching fails
-        setLoading(false); // Set loading to false even if there's an error
-        console.error("Error fetching questions:", err); // Log the error to console
-      });
-  }, []); // Empty dependency array means this effect runs only once on component mount
-
-  // Function to handle adding a new question to the API (POST request)
-  const handleAddQuestion = (newQuestion) => {
-    fetch("http://localhost:4000/questions", {
-      method: "POST", // Specify POST method
-      headers: {
-        "Content-Type": "application/json", // Required header for JSON body
-      },
-      body: JSON.stringify(newQuestion), // Convert new question object to JSON string
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        if (isMounted) {
+          // Transform data for QuestionItem: calculate correctIndex from correct_answer
+          const transformedQuestions = data.map(q => ({
+            ...q,
+            correctIndex: q.answers.indexOf(q.correct_answer) // Find index of the correct answer string
+          }));
+          setQuestions(transformedQuestions);
+          setLoading(false);
         }
-        return response.json(); // Parse the response from the server (usually the added item)
-      })
-      .then((addedQuestion) => {
-        // Update the questions state by adding the newly created question
-        setQuestions([...questions, addedQuestion]);
-        setPage("List"); // Navigate back to the list view after adding
       })
       .catch((err) => {
-        setError(err);
-        console.error("Error adding question:", err);
+        console.error("Error fetching questions:", err);
+        if (isMounted) {
+          setLoading(false);
+        }
       });
-  };
 
-  // Function to handle deleting a question from the API (DELETE request)
-  const handleDeleteQuestion = (id) => {
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  function handleAddQuestion(newQuestion) {
+    // When adding, ensure newQuestion also has correctIndex derived from correct_answer
+    const questionWithIndex = {
+      ...newQuestion,
+      correctIndex: newQuestion.answers.indexOf(newQuestion.correct_answer)
+    };
+    setQuestions((prevQuestions) => [...prevQuestions, questionWithIndex]);
+  }
+
+  function handleDeleteQuestion(id) {
     fetch(`http://localhost:4000/questions/${id}`, {
-      method: "DELETE", // Specify DELETE method
+      method: "DELETE",
     })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+      .then((r) => {
+        if (r.ok) {
+          setQuestions((prevQuestions) => prevQuestions.filter((q) => q.id !== id));
+        } else {
+          console.error("Failed to delete question:", r.status);
         }
-        // Filter out the deleted question from the state
-        setQuestions(questions.filter((q) => q.id !== id));
       })
-      .catch((err) => {
-        setError(err);
-        console.error("Error deleting question:", err);
-      });
-  };
+      .catch((error) => console.error("Error deleting question:", error));
+  }
 
-  // Function to handle updating a question's correctIndex (PATCH request)
-  const handleUpdateCorrectIndex = (id, correctIndex) => {
+  // Renamed to be explicit as it receives correctIndex
+  function handleUpdateCorrectIndex(id, newCorrectIndex) {
+    // Find the question to get its answers array
+    const questionToUpdate = questions.find(q => q.id === id);
+    if (!questionToUpdate) return;
+
+    // Get the actual answer string from the answers array using the newCorrectIndex
+    const updatedCorrectAnswerString = questionToUpdate.answers[newCorrectIndex];
+
     fetch(`http://localhost:4000/questions/${id}`, {
-      method: "PATCH", // Specify PATCH method
+      method: "PATCH",
       headers: {
-        "Content-Type": "application/json", // Required header for JSON body
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ correctIndex }), // Only send the correctIndex to update
+      // Send the correct_answer string to the backend
+      body: JSON.stringify({ correct_answer: updatedCorrectAnswerString }),
     })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json(); // Parse the response (usually the updated item)
-      })
+      .then((r) => r.json())
       .then((updatedQuestion) => {
-        // Update the specific question in the state array
-        setQuestions(
-          questions.map((q) => (q.id === id ? updatedQuestion : q))
+        // Transform the updatedQuestion from API to include correctIndex for client state
+        const questionWithIndex = {
+          ...updatedQuestion,
+          correctIndex: updatedQuestion.answers.indexOf(updatedQuestion.correct_answer)
+        };
+        setQuestions((currentQuestions) =>
+          currentQuestions.map((q) => (q.id === id ? questionWithIndex : q))
         );
       })
-      .catch((err) => {
-        setError(err);
-        console.error("Error updating question:", err);
-      });
+      .catch((error) => console.error("Error updating question:", error));
+  }
+
+  const handleToggleQuestions = () => {
+    setShowQuestions(!showQuestions);
   };
 
-  // Display loading message while data is being fetched
-  if (loading) {
-    return (
-      <main className="p-6 max-w-3xl mx-auto text-center text-gray-600 text-lg mt-8">
-        Loading questions...
-      </main>
-    );
-  }
-
-  // Display error message if fetching fails
-  if (error) {
-    return (
-      <main className="p-6 max-w-3xl mx-auto text-center text-red-600 text-lg mt-8">
-        Error: {error.message}
-      </main>
-    );
-  }
-
   return (
-    <main className="App p-6 max-w-3xl mx-auto bg-gray-100 rounded-lg shadow-xl my-8 font-sans">
-      <h1 className="text-4xl font-bold text-center text-blue-700 mb-8">Quiz Master Admin</h1>
-      {/* AdminNavBar controls the 'page' state */}
-      <AdminNavBar onChangePage={setPage} />
+    <main>
+      <QuestionForm onAddQuestion={handleAddQuestion} />
+      <button
+        onClick={handleToggleQuestions}
+        className="mt-4 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+      >
+        {showQuestions ? "Hide Questions" : "View Questions"}
+      </button>
 
-      {/* Conditionally render QuestionForm or QuestionList based on 'page' state */}
-      {page === "Form" ? (
-        <QuestionForm onAddQuestion={handleAddQuestion} />
-      ) : (
-        <QuestionList
-          questions={questions} // Pass the questions data
-          onDeleteQuestion={handleDeleteQuestion} // Pass the delete handler
-          onUpdateCorrectIndex={handleUpdateCorrectIndex} // Pass the update handler
-        />
+      {showQuestions && (
+        loading ? (
+          <p className="text-center text-gray-600 mt-4">Loading questions...</p>
+        ) : (
+          <QuestionList
+            questions={questions}
+            onDeleteQuestion={handleDeleteQuestion}
+            onUpdateCorrectIndex={handleUpdateCorrectIndex} // Corrected prop name
+          />
+        )
       )}
     </main>
   );
 }
 
 export default App;
-
